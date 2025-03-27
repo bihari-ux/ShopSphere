@@ -40,7 +40,7 @@ async function createRecord(req, res) {
                     data.password = hash
                     await data.save()
                     res.send({
-                        result: "Done",
+                        result: "Done", 
                         data: data
                     })
                 } catch (error) {
