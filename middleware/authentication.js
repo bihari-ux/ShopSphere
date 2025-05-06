@@ -1,91 +1,60 @@
 const jwt = require("jsonwebtoken");
 
-// 🔐 Token extractor (handles Bearer too)
-function extractToken(req) {
-  const authHeader = req.headers.authorization;
-  if (!authHeader) return null;
-
-  if (authHeader.startsWith("Bearer ")) {
-    return authHeader.slice(7); // Remove "Bearer " from string
-  }
-  return authHeader;
-}
-
-// ✅ Admin verify middleware
+// Middleware to verify Admin token
 function verifyAdmin(req, res, next) {
-  const token = extractToken(req);
-  const secret = process.env.JWT_SECRET_KEY_ADMIN;
+  const token = req.headers.authorization;
 
   if (!token) {
-    return res.status(401).json({
+    return res.status(401).send({
       result: "Fail",
-      reason: "Authorization token missing",
-    });
-  }
-
-  if (!secret) {
-    return res.status(500).json({
-      result: "Fail",
-      reason: "Admin secret key not configured in environment",
+      reason: "Token Missing. You Are Not Authorized to Access this API",
     });
   }
 
   try {
-    const decoded = jwt.verify(token, secret);
-    req.admin = decoded;
+    jwt.verify(token, process.env.JWT_SECRET_KEY_ADMIN);
     next();
   } catch (error) {
-    if (error.name === "TokenExpiredError") {
-      return res.status(498).json({
-        result: "Fail",
-        reason: "Token Expired. Please Login Again to Access this API",
-      });
-    }
+    handleTokenError(error, res);
+  }
+}
 
-    return res.status(401).json({
+// Middleware to verify Buyer or Admin token
+function verifyBoth(req, res, next) {
+  const token = req.headers.authorization;
+
+  if (!token) {
+    return res.status(401).send({
+      result: "Fail",
+      reason: "Token Missing. You Are Not Authorized to Access this API",
+    });
+  }
+
+  try {
+    jwt.verify(token, process.env.JWT_SECRET_KEY_BUYER);
+    return next();
+  } catch (error) {
+    try {
+      jwt.verify(token, process.env.JWT_SECRET_KEY_ADMIN);
+      return next();
+    } catch (err) {
+      handleTokenError(err, res);
+    }
+  }
+}
+
+// Reusable error handler function
+function handleTokenError(error, res) {
+  if (error.name === "TokenExpiredError") {
+    res.status(498).send({
+      result: "Fail",
+      reason: "Token Expired. Please Login Again to Access this API",
+    });
+  } else {
+    res.status(401).send({
       result: "Fail",
       reason: "You Are Not An Authorized Person to Access this API",
     });
-  }
-}
-
-// ✅ Buyer or Admin verify middleware
-function verifyBoth(req, res, next) {
-  const token = extractToken(req);
-  const buyerSecret = process.env.JWT_SECRET_KEY_BUYER;
-  const adminSecret = process.env.JWT_SECRET_KEY_ADMIN;
-
-  if (!token) {
-    return res.status(401).json({
-      result: "Fail",
-      reason: "Authorization token missing",
-    });
-  }
-
-  try {
-    const decodedBuyer = jwt.verify(token, buyerSecret);
-    req.user = decodedBuyer;
-    return next();
-  } catch (buyerErr) {
-    try {
-      const decodedAdmin = jwt.verify(token, adminSecret);
-      req.admin = decodedAdmin;
-      return next();
-    } catch (adminErr) {
-      const error = adminErr.name === "TokenExpiredError" ? adminErr : buyerErr;
-
-      if (error.name === "TokenExpiredError") {
-        return res.status(498).json({
-          result: "Fail",
-          reason: "Token Expired. Please Login Again to Access this API",
-        });
-      }
-
-      return res.status(401).json({
-        result: "Fail",
-        reason: "You Are Not An Authorized Person to Access this API",
-      });
-    }
   }
 }
 
